@@ -323,42 +323,43 @@
             
         // 获取下一张图片（交替策略）
         const getNextImage = () => {
-            const startIndex = currentArtistIndex;
-                
-            do {
-                // 保存当前索引
-                const currentIndex = currentArtistIndex;
-                // 移动到下一个歌手（循环）
-                currentArtistIndex = (currentArtistIndex + 1) % imagesByArtist.length;
+            // 遍历所有歌手，找到有写真的歌手
+            for (let i = 0; i < imagesByArtist.length; i++) {
+                // 计算当前要检查的歌手索引
+                const checkIndex = (currentArtistIndex + i) % imagesByArtist.length;
                 
                 // 获取当前歌手的写真列表
-                const currentArtistImages = imagesByArtist[currentIndex];
+                const currentArtistImages = imagesByArtist[checkIndex];
                     
                 // 如果这个歌手有写真，返回一张图片
                 if (currentArtistImages && currentArtistImages.length > 0) {
-                    const imageIndex = artistIndices[currentIndex];
+                    const imageIndex = artistIndices[checkIndex];
                     const image = currentArtistImages[imageIndex];
                         
                     // 更新这个歌手的索引（循环）
-                    artistIndices[currentIndex] = (imageIndex + 1) % currentArtistImages.length;
+                    artistIndices[checkIndex] = (imageIndex + 1) % currentArtistImages.length;
+                    
+                    // 更新当前艺术家索引，下次从下一个开始
+                    currentArtistIndex = (checkIndex + 1) % imagesByArtist.length;
                         
                     return image;
                 }
-                    
-                // 如果转了一圈回到原点，说明所有歌手都没图片了
-                if (currentArtistIndex === startIndex) {
-                    return null;
-                }
-            } while (true);
+            }
+            
+            // 所有歌手都没有写真
+            return null;
         };
             
         // 获取前两张不同的图片
         const firstImage = getNextImage();
         let secondImage = getNextImage();
+        let attemptCount = 0;
+        const maxAttempts = 10; // 最多尝试 10 次
             
         // 确保第二张与第一张不同
-        while (secondImage && secondImage === firstImage) {
+        while (secondImage && secondImage === firstImage && attemptCount < maxAttempts) {
             secondImage = getNextImage();
+            attemptCount++;
         }
             
         // 如果没有不同的第二张图片，不启动轮播

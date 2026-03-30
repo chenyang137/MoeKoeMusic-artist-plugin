@@ -146,3 +146,19 @@
     height: 120px !important;
 }
 
+/* 黑胶唱片磁头缩放 */
+.lyrics-screen .tonearm {
+    width: 80px !important; /* 160px / 2 */
+    height: 99px !important; /* 198px / 2 */
+    top: -25px !important; /* -50px / 2 */
+    right: 10px !important; /* 20px / 2 */
+    transform: rotate(-30deg) !important;
+    transform-origin: 85% 15% !important;
+}
+
+/* 磁头播放状态 */
+.lyrics-screen .tonearm.playing {
+    transform: rotate(0deg) !important;
+    transform-origin: 85% 15% !important;
+}
+
