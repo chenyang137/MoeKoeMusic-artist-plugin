@@ -326,19 +326,21 @@
             const startIndex = currentArtistIndex;
                 
             do {
-                // 获取当前歌手的写真列表
-                const currentArtistImages = imagesByArtist[currentArtistIndex];
-                    
+                // 保存当前索引
+                const currentIndex = currentArtistIndex;
                 // 移动到下一个歌手（循环）
                 currentArtistIndex = (currentArtistIndex + 1) % imagesByArtist.length;
+                
+                // 获取当前歌手的写真列表
+                const currentArtistImages = imagesByArtist[currentIndex];
                     
                 // 如果这个歌手有写真，返回一张图片
                 if (currentArtistImages && currentArtistImages.length > 0) {
-                    const imageIndex = artistIndices[currentArtistIndex];
+                    const imageIndex = artistIndices[currentIndex];
                     const image = currentArtistImages[imageIndex];
                         
                     // 更新这个歌手的索引（循环）
-                    artistIndices[currentArtistIndex] = (imageIndex + 1) % currentArtistImages.length;
+                    artistIndices[currentIndex] = (imageIndex + 1) % currentArtistImages.length;
                         
                     return image;
                 }
