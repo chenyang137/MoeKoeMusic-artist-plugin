@@ -669,8 +669,8 @@
         try {
             if (artistId) {
                 // 检查是否有多个歌手
-                const artistIds = String(artistId).split(/[&/,、]/).map(id => id.trim()).filter(id => id);
-                const artistNames = author.split(/[&/,、]/).map(name => name.trim()).filter(name => name);
+                const artistIds = String(artistId).split('、').map(id => id.trim()).filter(id => id);
+                const artistNames = author.split('、').map(name => name.trim()).filter(name => name);
                 
                 if (artistIds.length > 1) {
                     // 多歌手情况：获取所有歌手的写真
@@ -681,7 +681,7 @@
                 }
             } else if (author) {
                 // 歌曲数据中没有歌手 ID，尝试通过搜索获取
-                const artistNames = author.split(/[&/,、]/).map(name => name.trim()).filter(name => name);
+                const artistNames = author.split('、').map(name => name.trim()).filter(name => name);
                 
                 if (artistNames.length > 1) {
                     // 多歌手情况：分别搜索每个歌手
