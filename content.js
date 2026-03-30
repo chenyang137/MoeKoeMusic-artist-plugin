@@ -195,105 +195,134 @@
         img2.src = images[secondImageIndex];
         
         let loadedCount = 0;
+        let errorCount = 0;
+        const totalImages = 2;
         
-        const onBothLoaded = () => {
-            loadedCount++;
-            if (loadedCount === 2) {
-                // 两张图片都加载完成，直接设置第一张，不触发动画
-                const layer1 = document.getElementById('wallpaper-layer-1');
-                const layer2 = document.getElementById('wallpaper-layer-2');
-                
-                if (!layer1 || !layer2) return;
-                
-                // 重置状态：两个图层都不透明，但只显示图层 1
-                layer1.style.transition = 'none'; // 禁用过渡动画
-                layer2.style.transition = 'none';
-                layer1.style.opacity = '1';
-                layer2.style.opacity = '0';
-                layer1.style.backgroundImage = `url(${images[0]})`;
-                layer2.style.backgroundImage = `url(${images[secondImageIndex]})`;
-                state.backgroundImage1 = images[0];
-                state.backgroundImage2 = images[secondImageIndex];
-                state.activeLayer = 1;
-                
-                // 恢复过渡动画
-                setTimeout(() => {
-                    layer1.style.transition = 'opacity 1s ease-in-out';
-                    layer2.style.transition = 'opacity 1s ease-in-out';
-                }, 50);
-                
-                // 设置当前索引为 secondImageIndex，这样下次就会切换到下一张
-                state.currentBackgroundIndex = secondImageIndex;
-                
-                // 启动轮播定时器
-                state.backgroundRotationTimer = setInterval(() => {
-                    // 关键检查：如果歌曲已经切换，停止定时器
-                    if (state.currentSongHash !== currentSongHashForRotation) {
-                        console.log('[ArtistWallpaper] 歌曲已切换，停止旧轮播定时器');
-                        clearRotationTimer();
-                        return;
-                    }
+        const checkReady = () => {
+            // 检查是否所有图片都已处理（加载成功或失败）
+            if (loadedCount + errorCount >= totalImages) {
+                // 至少有一张图片加载成功才能启动轮播
+                if (loadedCount > 0) {
+                    // 两张图片都加载完成，直接设置第一张，不触发动画
+                    const layer1 = document.getElementById('wallpaper-layer-1');
+                    const layer2 = document.getElementById('wallpaper-layer-2');
                     
-                    // 如果正在切换中，跳过本次定时器触发
-                    if (state.isTransitioning) {
-                        return;
-                    }
+                    if (!layer1 || !layer2) return;
                     
-                    state.currentBackgroundIndex = (state.currentBackgroundIndex + 1) % images.length;
-                    const nextImage = images[state.currentBackgroundIndex];
+                    // 重置状态：两个图层都不透明，但只显示图层 1
+                    layer1.style.transition = 'none'; // 禁用过渡动画
+                    layer2.style.transition = 'none';
+                    layer1.style.opacity = '1';
+                    layer2.style.opacity = '0';
+                    layer1.style.backgroundImage = `url(${images[0]})`;
+                    layer2.style.backgroundImage = `url(${images[secondImageIndex]})`;
+                    state.backgroundImage1 = images[0];
+                    state.backgroundImage2 = images[secondImageIndex];
+                    state.activeLayer = 1;
                     
-                    // 获取当前显示的图片
-                    const currentImage = state.activeLayer === 1 ? state.backgroundImage2 : state.backgroundImage1;
+                    // 恢复过渡动画
+                    setTimeout(() => {
+                        layer1.style.transition = 'opacity 1s ease-in-out';
+                        layer2.style.transition = 'opacity 1s ease-in-out';
+                    }, 50);
                     
-                    // 跳过与当前图片相同的图片
-                    if (nextImage === currentImage) {
-                        return; // 跳过相同的图片
-                    }
-
-                    // 标记开始切换
-                    state.isTransitioning = true;
-
-                    // 预加载下一张图片
-                    const img = new Image();
-                    img.src = nextImage;
-
-                    img.onload = () => {
-                        // 再次检查歌曲是否已切换
+                    // 设置当前索引为 secondImageIndex，这样下次就会切换到下一张
+                    state.currentBackgroundIndex = secondImageIndex;
+                    
+                    // 启动轮播定时器
+                    state.backgroundRotationTimer = setInterval(() => {
+                        // 关键检查：如果歌曲已经切换，停止定时器
                         if (state.currentSongHash !== currentSongHashForRotation) {
-                            console.log('[ArtistWallpaper] 图片加载中歌曲已切换，放弃');
-                            state.isTransitioning = false;
+                            console.log('[ArtistWallpaper] 歌曲已切换，停止旧轮播定时器');
+                            clearRotationTimer();
                             return;
                         }
                         
-                        // 确保图片完全解码后再切换
-                        if ('decode' in img) {
-                            img.decode().then(() => {
-                                updateBackgroundLayer(nextImage);
-                                state.isTransitioning = false; // 切换完成
-                            }).catch(() => {
+                        // 如果正在切换中，跳过本次定时器触发
+                        if (state.isTransitioning) {
+                            return;
+                        }
+                        
+                        state.currentBackgroundIndex = (state.currentBackgroundIndex + 1) % images.length;
+                        const nextImage = images[state.currentBackgroundIndex];
+                        
+                        // 获取当前显示的图片
+                        const currentImage = state.activeLayer === 1 ? state.backgroundImage2 : state.backgroundImage1;
+                        
+                        // 跳过与当前图片相同的图片
+                        if (nextImage === currentImage) {
+                            return; // 跳过相同的图片
+                        }
+
+                        // 标记开始切换
+                        state.isTransitioning = true;
+
+                        // 预加载下一张图片
+                        const img = new Image();
+                        img.src = nextImage;
+
+                        img.onload = () => {
+                            // 再次检查歌曲是否已切换
+                            if (state.currentSongHash !== currentSongHashForRotation) {
+                                console.log('[ArtistWallpaper] 图片加载中歌曲已切换，放弃');
+                                state.isTransitioning = false;
+                                return;
+                            }
+                            
+                            // 确保图片完全解码后再切换
+                            if ('decode' in img) {
+                                img.decode().then(() => {
+                                    updateBackgroundLayer(nextImage);
+                                    state.isTransitioning = false; // 切换完成
+                                }).catch(() => {
+                                    updateBackgroundLayer(nextImage);
+                                    state.isTransitioning = false;
+                                });
+                            } else {
                                 updateBackgroundLayer(nextImage);
                                 state.isTransitioning = false;
-                            });
-                        } else {
-                            updateBackgroundLayer(nextImage);
-                            state.isTransitioning = false;
-                        }
-                    };
+                            }
+                        };
 
-                    img.onerror = (error) => {
-                        console.warn('[ArtistWallpaper] 背景图加载失败:', nextImage, error);
-                        state.isTransitioning = false;
-                    };
-                }, state.rotationInterval);
+                        img.onerror = (error) => {
+                            console.warn('[ArtistWallpaper] 背景图加载失败:', nextImage, error);
+                            state.isTransitioning = false;
+                        };
+                    }, state.rotationInterval);
+                }
             }
         };
         
-        img1.onload = onBothLoaded;
-        img2.onload = onBothLoaded;
+        const onLoad = () => {
+            loadedCount++;
+            checkReady();
+        };
+        
+        const onError = () => {
+            errorCount++;
+            checkReady();
+        };
+        
+        img1.onload = onLoad;
+        img2.onload = onLoad;
+        img1.onerror = onError;
+        img2.onerror = onError;
         
         // 如果图片已经在缓存中，手动触发 onload
-        if (img1.complete) onBothLoaded();
-        if (img2.complete) onBothLoaded();
+        if (img1.complete) {
+            if (img1.naturalWidth > 0) {
+                onLoad();
+            } else {
+                onError();
+            }
+        }
+        if (img2.complete) {
+            if (img2.naturalWidth > 0) {
+                onLoad();
+            } else {
+                onError();
+            }
+        }
     }
 
     /**
@@ -378,101 +407,130 @@
         img2.src = secondImage;
             
         let loadedCount = 0;
-            
-        const onBothLoaded = () => {
-            loadedCount++;
-            if (loadedCount === 2) {
-                // 两张图片都加载完成，直接设置第一张，不触发动画
-                const layer1 = document.getElementById('wallpaper-layer-1');
-                const layer2 = document.getElementById('wallpaper-layer-2');
-                    
-                if (!layer1 || !layer2) return;
-                    
-                // 重置状态：两个图层都不透明，但只显示图层 1
-                layer1.style.transition = 'none'; // 禁用过渡动画
-                layer2.style.transition = 'none';
-                layer1.style.opacity = '1';
-                layer2.style.opacity = '0';
-                layer1.style.backgroundImage = `url(${firstImage})`;
-                layer2.style.backgroundImage = `url(${secondImage})`;
-                state.backgroundImage1 = firstImage;
-                state.backgroundImage2 = secondImage;
-                state.activeLayer = 1;
-                    
-                // 恢复过渡动画
-                setTimeout(() => {
-                    layer1.style.transition = 'opacity 1s ease-in-out';
-                    layer2.style.transition = 'opacity 1s ease-in-out';
-                }, 50);
-                    
-                // 启动轮播定时器
-                state.backgroundRotationTimer = setInterval(() => {
-                    // 关键检查：如果歌曲已经切换，停止定时器
-                    if (state.currentSongHash !== currentSongHashForAlternating) {
-                        console.log('[ArtistWallpaper] 歌曲已切换，停止旧轮播定时器');
-                        clearRotationTimer();
-                        return;
-                    }
-                    
-                    // 如果正在切换中，跳过本次定时器触发
-                    if (state.isTransitioning) {
-                        return;
-                    }
+        let errorCount = 0;
+        const totalImages = 2;
+        
+        const checkReady = () => {
+            // 检查是否所有图片都已处理（加载成功或失败）
+            if (loadedCount + errorCount >= totalImages) {
+                // 至少有一张图片加载成功才能启动轮播
+                if (loadedCount > 0) {
+                    // 两张图片都加载完成，直接设置第一张，不触发动画
+                    const layer1 = document.getElementById('wallpaper-layer-1');
+                    const layer2 = document.getElementById('wallpaper-layer-2');
                         
-                    const nextImage = getNextImage();
+                    if (!layer1 || !layer2) return;
                         
-                    if (!nextImage) return;
+                    // 重置状态：两个图层都不透明，但只显示图层 1
+                    layer1.style.transition = 'none'; // 禁用过渡动画
+                    layer2.style.transition = 'none';
+                    layer1.style.opacity = '1';
+                    layer2.style.opacity = '0';
+                    layer1.style.backgroundImage = `url(${firstImage})`;
+                    layer2.style.backgroundImage = `url(${secondImage})`;
+                    state.backgroundImage1 = firstImage;
+                    state.backgroundImage2 = secondImage;
+                    state.activeLayer = 1;
                         
-                    // 跳过与当前图片相同的图片
-                    const currentImage = state.activeLayer === 1 ? state.backgroundImage2 : state.backgroundImage1;
-                    if (nextImage === currentImage) {
-                        return; // 跳过相同的图片
-                    }
+                    // 恢复过渡动画
+                    setTimeout(() => {
+                        layer1.style.transition = 'opacity 1s ease-in-out';
+                        layer2.style.transition = 'opacity 1s ease-in-out';
+                    }, 50);
                         
-                    // 标记开始切换
-                    state.isTransitioning = true;
-                        
-                    // 预加载下一张图片
-                    const img = new Image();
-                    img.src = nextImage;
-                        
-                    img.onload = () => {
-                        // 再次检查歌曲是否已切换
+                    // 启动轮播定时器
+                    state.backgroundRotationTimer = setInterval(() => {
+                        // 关键检查：如果歌曲已经切换，停止定时器
                         if (state.currentSongHash !== currentSongHashForAlternating) {
-                            console.log('[ArtistWallpaper] 图片加载中歌曲已切换，放弃');
-                            state.isTransitioning = false;
+                            console.log('[ArtistWallpaper] 歌曲已切换，停止旧轮播定时器');
+                            clearRotationTimer();
                             return;
                         }
                         
-                        // 确保图片完全解码后再切换
-                        if ('decode' in img) {
-                            img.decode().then(() => {
-                                updateBackgroundLayer(nextImage);
-                                state.isTransitioning = false; // 切换完成
-                            }).catch(() => {
+                        // 如果正在切换中，跳过本次定时器触发
+                        if (state.isTransitioning) {
+                            return;
+                        }
+                            
+                        const nextImage = getNextImage();
+                            
+                        if (!nextImage) return;
+                            
+                        // 跳过与当前图片相同的图片
+                        const currentImage = state.activeLayer === 1 ? state.backgroundImage2 : state.backgroundImage1;
+                        if (nextImage === currentImage) {
+                            return; // 跳过相同的图片
+                        }
+                            
+                        // 标记开始切换
+                        state.isTransitioning = true;
+                            
+                        // 预加载下一张图片
+                        const img = new Image();
+                        img.src = nextImage;
+                            
+                        img.onload = () => {
+                            // 再次检查歌曲是否已切换
+                            if (state.currentSongHash !== currentSongHashForAlternating) {
+                                console.log('[ArtistWallpaper] 图片加载中歌曲已切换，放弃');
+                                state.isTransitioning = false;
+                                return;
+                            }
+                            
+                            // 确保图片完全解码后再切换
+                            if ('decode' in img) {
+                                img.decode().then(() => {
+                                    updateBackgroundLayer(nextImage);
+                                    state.isTransitioning = false; // 切换完成
+                                }).catch(() => {
+                                    updateBackgroundLayer(nextImage);
+                                    state.isTransitioning = false;
+                                });
+                            } else {
                                 updateBackgroundLayer(nextImage);
                                 state.isTransitioning = false;
-                            });
-                        } else {
-                            updateBackgroundLayer(nextImage);
+                            }
+                        };
+                            
+                        img.onerror = (error) => {
+                            console.warn('[ArtistWallpaper] 背景图加载失败:', nextImage, error);
                             state.isTransitioning = false;
-                        }
-                    };
-                        
-                    img.onerror = (error) => {
-                        console.warn('[ArtistWallpaper] 背景图加载失败:', nextImage, error);
-                        state.isTransitioning = false;
-                    };
-                }, state.rotationInterval);
+                        };
+                    }, state.rotationInterval);
+                }
             }
         };
             
-        img1.onload = onBothLoaded;
-        img2.onload = onBothLoaded;
+        const onLoad = () => {
+            loadedCount++;
+            checkReady();
+        };
+        
+        const onError = () => {
+            errorCount++;
+            checkReady();
+        };
+            
+        img1.onload = onLoad;
+        img2.onload = onLoad;
+        img1.onerror = onError;
+        img2.onerror = onError;
             
         // 如果图片已经在缓存中，手动触发 onload
-        if (img1.complete) onBothLoaded();
-        if (img2.complete) onBothLoaded();
+        if (img1.complete) {
+            if (img1.naturalWidth > 0) {
+                onLoad();
+            } else {
+                onError();
+            }
+        }
+        if (img2.complete) {
+            if (img2.naturalWidth > 0) {
+                onLoad();
+            } else {
+                onError();
+            }
+        }
     }
 
     /**
