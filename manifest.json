@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "歌手写真轮播",
   "plugin_id":"artist-plugin",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "为播放器添加歌手写真轮播功能，在全屏歌词界面展示歌手写真背景图并自动轮播",
   "author": {
     "name": "chenyang137",
