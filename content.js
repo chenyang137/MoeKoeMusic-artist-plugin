@@ -14,6 +14,7 @@
         backgroundImage1: null,
         backgroundImage2: null,
         activeLayer: 1,
+        currentDisplayImage: null, // 当前屏幕上正在显示的图片 URL（用于防重复切换比对）
         rotationInterval: 10000, // 10 秒轮播
         isInitialized: false,
         observer: null,
@@ -34,6 +35,9 @@
         const layer2 = document.getElementById('wallpaper-layer-2');
         
         if (!layer1 || !layer2) return;
+
+        // 记录即将显示的图片为"当前显示图片"
+        state.currentDisplayImage = imageSrc;
 
         if (state.activeLayer === 1) {
             // 当前是图层 1，更新图层 2 并切换到图层 2
@@ -143,6 +147,8 @@
             clearInterval(state.backgroundRotationTimer);
             state.backgroundRotationTimer = null;
         }
+        // 同时重置切换锁，防止定时器被清除后锁仍残留
+        state.isTransitioning = false;
     }
 
     /**
@@ -189,10 +195,7 @@
 
         // 预加载前两张图片，确保它们都加载完成后再显示
         const img1 = new Image();
-        img1.src = images[0];
-        
         const img2 = new Image();
-        img2.src = images[secondImageIndex];
         
         let loadedCount = 0;
         let errorCount = 0;
@@ -219,6 +222,7 @@
                     state.backgroundImage1 = images[0];
                     state.backgroundImage2 = images[secondImageIndex];
                     state.activeLayer = 1;
+                    state.currentDisplayImage = images[0]; // 记录当前显示的图片
                     
                     // 恢复过渡动画
                     setTimeout(() => {
@@ -226,8 +230,10 @@
                         layer2.style.transition = 'opacity 1s ease-in-out';
                     }, 50);
                     
-                    // 设置当前索引为 secondImageIndex，这样下次就会切换到下一张
-                    state.currentBackgroundIndex = secondImageIndex;
+                    // currentBackgroundIndex 设为 0（当前显示 images[0]），
+                    // 这样定时器第一次触发时 index 递增到 secondImageIndex，
+                    // 刚好切到已经预置在 layer2 的 secondImage，实现平滑切换
+                    state.currentBackgroundIndex = 0;
                     
                     // 启动轮播定时器
                     state.backgroundRotationTimer = setInterval(() => {
@@ -243,32 +249,47 @@
                             return;
                         }
                         
-                        state.currentBackgroundIndex = (state.currentBackgroundIndex + 1) % images.length;
-                        const nextImage = images[state.currentBackgroundIndex];
+                        // 找到下一张与当前显示不同的图片
+                        let nextImage = null;
+                        const startIndex = state.currentBackgroundIndex;
+                        for (let i = 1; i <= images.length; i++) {
+                            const candidateIndex = (startIndex + i) % images.length;
+                            const candidate = images[candidateIndex];
+                            if (candidate !== state.currentDisplayImage) {
+                                state.currentBackgroundIndex = candidateIndex;
+                                nextImage = candidate;
+                                break;
+                            }
+                        }
                         
-                        // 获取当前显示的图片
-                        const currentImage = state.activeLayer === 1 ? state.backgroundImage2 : state.backgroundImage1;
-                        
-                        // 跳过与当前图片相同的图片
-                        if (nextImage === currentImage) {
-                            return; // 跳过相同的图片
+                        // 所有图片都相同，跳过
+                        if (!nextImage) {
+                            return;
                         }
 
-                        // 标记开始切换
+                        // 标记开始切换，并记录开始时间用于超时保护
                         state.isTransitioning = true;
+                        const transitionStartTime = Date.now();
 
                         // 预加载下一张图片
                         const img = new Image();
-                        img.src = nextImage;
 
-                        img.onload = () => {
+                        const doSwitch = () => {
+                            // 清除回调，防止重复触发
+                            img.onload = null;
+                            img.onerror = null;
                             // 再次检查歌曲是否已切换
                             if (state.currentSongHash !== currentSongHashForRotation) {
                                 console.log('[ArtistWallpaper] 图片加载中歌曲已切换，放弃');
                                 state.isTransitioning = false;
                                 return;
                             }
-                            
+                            // 超时保护：若距上次标记超过轮播间隔的 80%，强制解锁
+                            if (Date.now() - transitionStartTime > state.rotationInterval * 0.8) {
+                                console.warn('[ArtistWallpaper] 切换超时，强制解锁');
+                                state.isTransitioning = false;
+                                return;
+                            }
                             // 确保图片完全解码后再切换
                             if ('decode' in img) {
                                 img.decode().then(() => {
@@ -284,10 +305,28 @@
                             }
                         };
 
+                        img.onload = doSwitch;
+
                         img.onerror = (error) => {
+                            img.onload = null;
+                            img.onerror = null;
                             console.warn('[ArtistWallpaper] 背景图加载失败:', nextImage, error);
                             state.isTransitioning = false;
                         };
+
+                        img.src = nextImage;
+
+                        // 若图片已缓存（complete 为 true），onload 可能不会再触发，手动执行
+                        // 先清除回调再手动调用，防止 onload 和手动调用都触发造成重复执行
+                        if (img.complete) {
+                            img.onload = null;
+                            img.onerror = null;
+                            if (img.naturalWidth > 0) {
+                                doSwitch();
+                            } else {
+                                state.isTransitioning = false;
+                            }
+                        }
                     }, state.rotationInterval);
                 }
             }
@@ -308,20 +347,19 @@
         img1.onerror = onError;
         img2.onerror = onError;
         
-        // 如果图片已经在缓存中，手动触发 onload
+        // 赋值 src 触发加载；若图片已缓存（complete 为 true），onload 不会再触发，手动调用
+        img1.src = images[0];
         if (img1.complete) {
-            if (img1.naturalWidth > 0) {
-                onLoad();
-            } else {
-                onError();
-            }
+            img1.onload = null;
+            img1.onerror = null;
+            if (img1.naturalWidth > 0) { onLoad(); } else { onError(); }
         }
+
+        img2.src = images[secondImageIndex];
         if (img2.complete) {
-            if (img2.naturalWidth > 0) {
-                onLoad();
-            } else {
-                onError();
-            }
+            img2.onload = null;
+            img2.onerror = null;
+            if (img2.naturalWidth > 0) { onLoad(); } else { onError(); }
         }
     }
 
@@ -401,15 +439,16 @@
             
         // 预加载前两张图片
         const img1 = new Image();
-        img1.src = firstImage;
-            
         const img2 = new Image();
-        img2.src = secondImage;
             
         let loadedCount = 0;
         let errorCount = 0;
         const totalImages = 2;
         
+        // nextScheduledImage 记录下次定时器应切换到的图片
+        // 初始值为 secondImage（已预置在 layer2，第一次定时器触发时直接使用，实现平滑切换）
+        let nextScheduledImage = secondImage;
+
         const checkReady = () => {
             // 检查是否所有图片都已处理（加载成功或失败）
             if (loadedCount + errorCount >= totalImages) {
@@ -431,6 +470,7 @@
                     state.backgroundImage1 = firstImage;
                     state.backgroundImage2 = secondImage;
                     state.activeLayer = 1;
+                    state.currentDisplayImage = firstImage; // 记录当前显示的图片
                         
                     // 恢复过渡动画
                     setTimeout(() => {
@@ -451,51 +491,94 @@
                         if (state.isTransitioning) {
                             return;
                         }
-                            
-                        const nextImage = getNextImage();
-                            
-                        if (!nextImage) return;
-                            
-                        // 跳过与当前图片相同的图片
-                        const currentImage = state.activeLayer === 1 ? state.backgroundImage2 : state.backgroundImage1;
-                        if (nextImage === currentImage) {
-                            return; // 跳过相同的图片
+
+                        // 使用 nextScheduledImage（第一次为 secondImage，后续由 getNextImage 提供）
+                        // 跳过与当前显示相同的图片
+                        let targetImage = nextScheduledImage;
+                        const maxSkip = imagesByArtist.reduce((sum, arr) => sum + (arr ? arr.length : 0), 0) + 1;
+
+                        if (targetImage === state.currentDisplayImage) {
+                            // nextScheduledImage 与当前显示相同，继续从队列中取直到找到不同的
+                            let skipCount = 0;
+                            targetImage = null;
+                            while (skipCount < maxSkip) {
+                                const candidate = getNextImage();
+                                skipCount++;
+                                if (candidate && candidate !== state.currentDisplayImage) {
+                                    targetImage = candidate;
+                                    break;
+                                }
+                            }
+                            // 跳过后，nextScheduledImage 从队列取下一张
+                            nextScheduledImage = getNextImage() || firstImage;
+                        } else {
+                            // 正常使用 nextScheduledImage，预取下一张
+                            nextScheduledImage = getNextImage() || firstImage;
                         }
+
+                        if (!targetImage) return;
                             
-                        // 标记开始切换
+                        // 标记开始切换，并记录开始时间用于超时保护
                         state.isTransitioning = true;
+                        const transitionStartTime = Date.now();
+                        // 捕获本次切换目标，防止闭包引用被修改
+                        const imageToShow = targetImage;
                             
                         // 预加载下一张图片
                         const img = new Image();
-                        img.src = nextImage;
-                            
-                        img.onload = () => {
+
+                        const doSwitch = () => {
+                            // 清除回调，防止重复触发
+                            img.onload = null;
+                            img.onerror = null;
                             // 再次检查歌曲是否已切换
                             if (state.currentSongHash !== currentSongHashForAlternating) {
                                 console.log('[ArtistWallpaper] 图片加载中歌曲已切换，放弃');
                                 state.isTransitioning = false;
                                 return;
                             }
-                            
+                            // 超时保护：若距上次标记超过轮播间隔的 80%，强制解锁
+                            if (Date.now() - transitionStartTime > state.rotationInterval * 0.8) {
+                                console.warn('[ArtistWallpaper] 切换超时，强制解锁');
+                                state.isTransitioning = false;
+                                return;
+                            }
                             // 确保图片完全解码后再切换
                             if ('decode' in img) {
                                 img.decode().then(() => {
-                                    updateBackgroundLayer(nextImage);
+                                    updateBackgroundLayer(imageToShow);
                                     state.isTransitioning = false; // 切换完成
                                 }).catch(() => {
-                                    updateBackgroundLayer(nextImage);
+                                    updateBackgroundLayer(imageToShow);
                                     state.isTransitioning = false;
                                 });
                             } else {
-                                updateBackgroundLayer(nextImage);
+                                updateBackgroundLayer(imageToShow);
                                 state.isTransitioning = false;
                             }
                         };
                             
+                        img.onload = doSwitch;
+                            
                         img.onerror = (error) => {
-                            console.warn('[ArtistWallpaper] 背景图加载失败:', nextImage, error);
+                            img.onload = null;
+                            img.onerror = null;
+                            console.warn('[ArtistWallpaper] 背景图加载失败:', imageToShow, error);
                             state.isTransitioning = false;
                         };
+
+                        img.src = imageToShow;
+
+                        // 若图片已缓存（complete 为 true），先清除回调再手动调用，防止重复执行
+                        if (img.complete) {
+                            img.onload = null;
+                            img.onerror = null;
+                            if (img.naturalWidth > 0) {
+                                doSwitch();
+                            } else {
+                                state.isTransitioning = false;
+                            }
+                        }
                     }, state.rotationInterval);
                 }
             }
@@ -516,20 +599,19 @@
         img1.onerror = onError;
         img2.onerror = onError;
             
-        // 如果图片已经在缓存中，手动触发 onload
+        // 赋值 src 触发加载；若图片已缓存（complete 为 true），onload 不会再触发，手动调用
+        img1.src = firstImage;
         if (img1.complete) {
-            if (img1.naturalWidth > 0) {
-                onLoad();
-            } else {
-                onError();
-            }
+            img1.onload = null;
+            img1.onerror = null;
+            if (img1.naturalWidth > 0) { onLoad(); } else { onError(); }
         }
+
+        img2.src = secondImage;
         if (img2.complete) {
-            if (img2.naturalWidth > 0) {
-                onLoad();
-            } else {
-                onError();
-            }
+            img2.onload = null;
+            img2.onerror = null;
+            if (img2.naturalWidth > 0) { onLoad(); } else { onError(); }
         }
     }
 
@@ -544,6 +626,7 @@
         state.backgroundImage2 = null;
         state.activeLayer = 1;
         state.isTransitioning = false;
+        state.currentDisplayImage = null;
         
         const defaultBg = albumCoverUrl || 'https://random.MoeJue.cn/randbg.php';
         updateBackgroundLayer(defaultBg);
@@ -720,6 +803,7 @@
         state.activeLayer = 1;
         state.isTransitioning = false;
         state.currentBackgroundIndex = 0;
+        state.currentDisplayImage = null;
         
         // 立即清除 DOM 中的背景图层缓存，确保视觉上立刻清空
         clearBackgroundLayers();
