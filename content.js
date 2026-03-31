@@ -866,6 +866,7 @@
     function setupLyricsObserver() {
         let lastSongHash = null;
         let checkInterval = null;
+        let wasVisible = false; // 追踪 lyrics-screen 是否曾经可见
         
         // 定时检查歌曲变化
         const startSongCheckInterval = () => {
@@ -884,31 +885,37 @@
         
         // 使用 MutationObserver 监听 DOM 变化
         state.observer = new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
-                if (mutation.type === 'childList') {
-                    const lyricsScreen = document.querySelector('.lyrics-screen');
-                    if (lyricsScreen) {
-                        // 歌词界面显示时初始化背景图层
-                        if (!state.isInitialized) {
-                            state.isInitialized = true;
-                            initBackgroundLayers();
-                            // 延迟处理歌曲以等待数据加载
-                            setTimeout(handleSongChange, 500);
-                            // 启动定时检查
-                            startSongCheckInterval();
-                        }
-                        
-                        // 注意：不再在这里检查歌曲变化，避免使用缓存的旧歌曲数据
-                        // 只通过定时器检查歌曲变化
-                    } else {
-                        // 歌词界面隐藏时
-                        state.isInitialized = false;
-                        if (checkInterval) {
-                            clearInterval(checkInterval);
-                            checkInterval = null;
-                        }
-                    }
+            const lyricsScreen = document.querySelector('.lyrics-screen');
+            const isVisible = !!lyricsScreen;
+            
+            if (isVisible && !wasVisible) {
+                // 从不可见变为可见（进入播放界面）
+                wasVisible = true;
+                state.isInitialized = true;
+                initBackgroundLayers();
+                // 启动歌曲检查定时器
+                startSongCheckInterval();
+                
+                // 重新获取当前歌曲 hash，即使歌曲没变也重启轮播
+                const currentSong = getCurrentSong();
+                const currentHash = currentSong?.hash;
+                if (currentHash) {
+                    lastSongHash = currentHash;
                 }
+                // 延迟处理，确保 DOM 完全就绪后重启轮播
+                setTimeout(handleSongChange, 500);
+                
+            } else if (!isVisible && wasVisible) {
+                // 从可见变为不可见（退出播放界面）
+                wasVisible = false;
+                state.isInitialized = false;
+                // 停止轮播定时器和歌曲检查
+                clearRotationTimer();
+                if (checkInterval) {
+                    clearInterval(checkInterval);
+                    checkInterval = null;
+                }
+                lastSongHash = null; // 重置，确保下次进入时即使歌曲没变也能触发
             }
         });
 
