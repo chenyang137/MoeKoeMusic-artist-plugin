@@ -3,6 +3,10 @@
 为 MoeKoeMusic 播放器添加歌手写真轮播功能，在全屏歌词界面展示歌手写真背景图并自动轮播。
 
 <img width="1670" height="1111" alt="图片" src="https://github.com/user-attachments/assets/1e2249a3-521e-4406-b9c2-738aa7bd038b" />
+<img width="1871" height="1200" alt="图片" src="https://github.com/user-attachments/assets/3e394868-1177-4ede-8b8c-012b3afc18aa" />
+<img width="1871" height="1200" alt="图片" src="https://github.com/user-attachments/assets/a0c42d6a-5914-46fc-8cad-f5731773db6b" />
+<img width="1871" height="1200" alt="图片" src="https://github.com/user-attachments/assets/58662635-adb8-4eb4-9110-6c393a56a703" />
+
 
 
 ## 功能特性
