@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "moekoe": true,
   "name": "歌手写真轮播",
   "plugin_id":"artist-plugin",
   "version": "1.1.0",
