@@ -162,3 +162,375 @@
     transform-origin: 85% 15% !important;
 }
 
+/* ==================== 右键菜单 ==================== */
+.artist-context-menu {
+    position: fixed;
+    z-index: 100000;
+    min-width: 210px;
+    background: rgba(28, 28, 34, 0.96);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 6px 0;
+    box-shadow: 0 10px 36px rgba(0, 0, 0, 0.55);
+    color: #eee;
+    font-size: 13px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    user-select: none;
+}
+
+.artist-context-menu .acm-item {
+    padding: 9px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.artist-context-menu .acm-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.artist-context-menu .acm-item.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.artist-context-menu .acm-item.disabled:hover {
+    background: transparent;
+}
+
+.artist-context-menu .acm-icon {
+    width: 18px;
+    text-align: center;
+    font-size: 14px;
+}
+
+/* ==================== 通用弹窗遮罩 ==================== */
+.artist-gallery-modal,
+.artist-interval-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 100001;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.agm-backdrop,
+.aid-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+/* ==================== 写真选择弹窗 ==================== */
+.agm-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(760px, 92vw);
+    max-height: 84vh;
+    background: rgba(34, 34, 40, 0.98);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 18px 52px rgba(0, 0, 0, 0.6);
+    color: #eee;
+}
+
+.agm-header {
+    padding: 14px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.agm-close,
+.aid-close {
+    cursor: pointer;
+    opacity: 0.6;
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 6px;
+}
+
+.agm-close:hover,
+.aid-close:hover {
+    opacity: 1;
+}
+
+/* 歌手切换标签（类似酷狗） */
+.agm-artist-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 12px 20px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.agm-tab {
+    padding: 7px 18px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.05);
+    color: #ccc;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s;
+}
+
+.agm-tab:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.agm-tab.active {
+    background: #ff8c00;
+    border-color: #ff8c00;
+    color: #fff;
+    font-weight: 600;
+}
+
+.agm-grid {
+    padding: 16px;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+
+/* 用 padding-bottom 撑高法实现 16:9：height:0 + padding-bottom:56.25%，
+   不依赖 aspect-ratio 属性（宿主页面会覆盖它），任何环境下高度都固定 */
+.agm-cell {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    padding-bottom: 56.25%; /* 16:9 宽高比 */
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.15s, transform 0.15s;
+    background: #000;
+    box-sizing: border-box;
+}
+
+.agm-cell:hover {
+    transform: scale(1.03);
+}
+
+.agm-cell.selected {
+    border-color: #4a9eff;
+}
+
+/* 图片用 inset:0 钉满整个格子，脱离文档流，高度由格子 padding 决定 */
+.agm-cell img {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    display: block;
+}
+
+.agm-check {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    background: #4a9eff;
+    color: #fff;
+    border-radius: 50%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: bold;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.agm-cell.selected .agm-check {
+    display: flex;
+}
+
+.agm-footer {
+    padding: 12px 20px;
+    display: flex;
+    gap: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    align-items: center;
+}
+
+.agm-spacer {
+    flex: 1;
+}
+
+/* ==================== 轮播间隔弹窗 ==================== */
+.aid-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(400px, 92vw);
+    background: rgba(34, 34, 40, 0.98);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 20px;
+    color: #eee;
+    box-shadow: 0 18px 52px rgba(0, 0, 0, 0.6);
+}
+
+.aid-header {
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.aid-presets {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.aid-custom {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.aid-input {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.35);
+    color: #eee;
+    font-size: 13px;
+}
+
+.aid-input:focus {
+    outline: none;
+    border-color: #4a9eff;
+}
+
+/* 弹窗通用按钮 */
+.agm-btn,
+.aid-btn {
+    padding: 7px 16px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    color: #eee;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s;
+}
+
+.agm-btn:hover,
+.aid-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.agm-ok {
+    background: #4a9eff !important;
+    border-color: #4a9eff !important;
+    color: #fff !important;
+}
+
+.aid-btn.active {
+    background: #4a9eff;
+    border-color: #4a9eff;
+    color: #fff;
+}
+
+/* ==================== 写真大图预览 ==================== */
+.artist-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 100002;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.alb-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.88);
+}
+
+.alb-stage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(90vw, 1200px);
+    height: min(90vh, 900px);
+    display: flex;
+    flex-direction: column;
+    color: #eee;
+}
+
+.alb-topbar,
+.alb-bottombar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 4px;
+}
+
+.alb-hint {
+    font-size: 12px;
+    opacity: 0.55;
+}
+
+.alb-close {
+    cursor: pointer;
+    font-size: 22px;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.alb-close:hover {
+    opacity: 1;
+}
+
+.alb-image-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.alb-image-wrap img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 10px 48px rgba(0, 0, 0, 0.7);
+}
+
+.alb-save {
+    background: #4a9eff !important;
+    border-color: #4a9eff !important;
+    color: #fff !important;
+}
+

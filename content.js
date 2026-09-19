@@ -21,29 +21,47 @@
         checkInterval: null,
         isFetchingWallpaper: false, // 防止并发请求
         isTransitioning: false, // 防止并发切换
-        currentSongHash: null // 当前正在处理的歌曲 hash
+        currentSongHash: null, // 当前正在处理的歌曲 hash
+        // ===== 右键菜单与写真管理 =====
+        currentImagesByArtist: [],   // 当前所有写真（按歌手分组）
+        isMultiArtist: false,        // 是否多歌手
+        currentArtistNames: [],      // 与 currentImagesByArtist 对应的歌手名
+        selectedImageSet: new Set(), // 选中参加轮播的图片 URL
+        contextMenu: null,           // 右键菜单 DOM
+        galleryModal: null,          // 写真选择弹窗
+        intervalDialog: null,        // 间隔设置弹窗
+        rotationToken: 0             // 轮播代：每次重启轮播自增，用于作废旧的在途回调
     };
 
     /**
      * 更新背景图层的辅助函数
      * @param {string} imageSrc - 图片 URL
      */
+    let pendingSwitchRaf = null; // 待执行的图层切换帧 id，连续切换时取消旧帧防止图层状态错乱
+
     function updateBackgroundLayer(imageSrc) {
         if (!imageSrc) return;
 
         const layer1 = document.getElementById('wallpaper-layer-1');
         const layer2 = document.getElementById('wallpaper-layer-2');
-        
+
         if (!layer1 || !layer2) return;
 
         // 记录即将显示的图片为"当前显示图片"
         state.currentDisplayImage = imageSrc;
 
+        // 取消上一个尚未执行的切换帧，防止连续切换时旧帧把图层透明度改回去造成重叠
+        if (pendingSwitchRaf !== null) {
+            cancelAnimationFrame(pendingSwitchRaf);
+            pendingSwitchRaf = null;
+        }
+
         if (state.activeLayer === 1) {
             // 当前是图层 1，更新图层 2 并切换到图层 2
             layer2.style.backgroundImage = `url(${imageSrc})`;
             state.backgroundImage2 = imageSrc;
-            requestAnimationFrame(() => {
+            pendingSwitchRaf = requestAnimationFrame(() => {
+                pendingSwitchRaf = null;
                 state.activeLayer = 2;
                 layer1.style.opacity = '0';
                 layer2.style.opacity = '1';
@@ -52,7 +70,8 @@
             // 当前是图层 2，更新图层 1 并切换到图层 1
             layer1.style.backgroundImage = `url(${imageSrc})`;
             state.backgroundImage1 = imageSrc;
-            requestAnimationFrame(() => {
+            pendingSwitchRaf = requestAnimationFrame(() => {
+                pendingSwitchRaf = null;
                 state.activeLayer = 1;
                 layer2.style.opacity = '0';
                 layer1.style.opacity = '1';
@@ -64,11 +83,17 @@
      * 清除背景图层缓存
      */
     function clearBackgroundLayers() {
+        // 取消尚未执行的切换帧，防止清图后旧帧又把透明度改回
+        if (pendingSwitchRaf !== null) {
+            cancelAnimationFrame(pendingSwitchRaf);
+            pendingSwitchRaf = null;
+        }
+
         const layer1 = document.getElementById('wallpaper-layer-1');
         const layer2 = document.getElementById('wallpaper-layer-2');
-        
+
         if (!layer1 || !layer2) return;
-        
+
         // 清除两个图层的背景图片
         layer1.style.backgroundImage = 'none';
         layer2.style.backgroundImage = 'none';
@@ -149,6 +174,9 @@
         }
         // 同时重置切换锁，防止定时器被清除后锁仍残留
         state.isTransitioning = false;
+        // 作废轮播代：立即让所有在途的旧预加载/切换回调失效，
+        // 防止切歌后异步空窗期里旧歌的图片又被写回图层
+        state.rotationToken++;
     }
 
     /**
@@ -164,6 +192,8 @@
 
         // 保存当前歌曲 hash 到闭包中，用于定时器验证
         const currentSongHashForRotation = state.currentSongHash;
+        // 轮播代：自增并捕获，用于作废本次轮播之前的所有在途回调（防止重启后旧图淡入造成重叠）
+        const myToken = ++state.rotationToken;
 
         // 重置所有状态，防止上一首歌的数据污染
         state.artistBackgroundImages = [...images]; // 复制数组
@@ -202,6 +232,8 @@
         const totalImages = 2;
         
         const checkReady = () => {
+            // 轮播代已变更（在预加载期间被重启），丢弃这次旧的预加载结果
+            if (state.rotationToken !== myToken) return;
             // 检查是否所有图片都已处理（加载成功或失败）
             if (loadedCount + errorCount >= totalImages) {
                 // 至少有一张图片加载成功才能启动轮播
@@ -243,7 +275,13 @@
                             clearRotationTimer();
                             return;
                         }
-                        
+
+                        // 关键检查：轮播代已变更（重启过），停止定时器
+                        if (state.rotationToken !== myToken) {
+                            clearRotationTimer();
+                            return;
+                        }
+
                         // 如果正在切换中，跳过本次定时器触发
                         if (state.isTransitioning) {
                             return;
@@ -281,6 +319,11 @@
                             // 再次检查歌曲是否已切换
                             if (state.currentSongHash !== currentSongHashForRotation) {
                                 console.log('[ArtistWallpaper] 图片加载中歌曲已切换，放弃');
+                                state.isTransitioning = false;
+                                return;
+                            }
+                            // 轮播代已变更（重启过），放弃这次在途切换，避免旧图叠加
+                            if (state.rotationToken !== myToken) {
                                 state.isTransitioning = false;
                                 return;
                             }
@@ -376,6 +419,8 @@
             
         // 保存当前歌曲 hash 到闭包中，用于定时器验证
         const currentSongHashForAlternating = state.currentSongHash;
+        // 轮播代：自增并捕获，用于作废旧的在途回调
+        const myToken = ++state.rotationToken;
             
         // 重置所有状态，防止上一首歌的数据污染
         state.artistBackgroundImages = [];
@@ -450,6 +495,8 @@
         let nextScheduledImage = secondImage;
 
         const checkReady = () => {
+            // 轮播代已变更（在预加载期间被重启），丢弃旧结果
+            if (state.rotationToken !== myToken) return;
             // 检查是否所有图片都已处理（加载成功或失败）
             if (loadedCount + errorCount >= totalImages) {
                 // 至少有一张图片加载成功才能启动轮播
@@ -486,7 +533,13 @@
                             clearRotationTimer();
                             return;
                         }
-                        
+
+                        // 关键检查：轮播代已变更（重启过），停止定时器
+                        if (state.rotationToken !== myToken) {
+                            clearRotationTimer();
+                            return;
+                        }
+
                         // 如果正在切换中，跳过本次定时器触发
                         if (state.isTransitioning) {
                             return;
@@ -534,6 +587,11 @@
                             // 再次检查歌曲是否已切换
                             if (state.currentSongHash !== currentSongHashForAlternating) {
                                 console.log('[ArtistWallpaper] 图片加载中歌曲已切换，放弃');
+                                state.isTransitioning = false;
+                                return;
+                            }
+                            // 轮播代已变更（重启过），放弃这次在途切换
+                            if (state.rotationToken !== myToken) {
                                 state.isTransitioning = false;
                                 return;
                             }
@@ -627,7 +685,12 @@
         state.activeLayer = 1;
         state.isTransitioning = false;
         state.currentDisplayImage = null;
-        
+        // 同步清空写真列表，避免画廊还显示上一首歌的图
+        state.currentImagesByArtist = [];
+        state.currentArtistNames = [];
+        state.isMultiArtist = false;
+        state.selectedImageSet = new Set();
+
         const defaultBg = albumCoverUrl || 'https://random.MoeJue.cn/randbg.php';
         updateBackgroundLayer(defaultBg);
     }
@@ -639,8 +702,6 @@
      * @param {string} expectedSongHash - 期望的歌曲 hash（用于验证）
      */
     async function fetchMultipleArtistsBackground(artistIds, artistNames, expectedSongHash) {
-        const allImagesByArtist = [];
-        
         try {
             // 并发获取所有歌手的写真
             const promises = artistIds.map(async (id, index) => {
@@ -671,17 +732,23 @@
                 console.log('[ArtistWallpaper] 歌曲已切换，放弃旧请求结果');
                 return; // 歌曲已切换，放弃这次请求的结果
             }
-            
-            // 保存每个歌手的写真数组
-            results.forEach(images => {
-                if (images && images.length > 0) {
-                    allImagesByArtist.push(images);
-                }
-            });
-            
+
+            // 只保留确实拉到写真的歌手，名字与图组严格对齐，避免标签名错位
+            const validEntries = artistIds
+                .map((id, i) => ({ name: artistNames[i] || `歌手${i + 1}`, images: results[i] }))
+                .filter(entry => entry.images && entry.images.length > 0);
+
+            const allImagesByArtist = validEntries.map(e => e.images);
+            const validNames = validEntries.map(e => e.name);
+
             const currentSong = getCurrentSong();
             if (allImagesByArtist.length > 0) {
                 // 使用交替播放策略
+                state.currentImagesByArtist = allImagesByArtist;
+                state.isMultiArtist = allImagesByArtist.length > 1;
+                state.currentArtistNames = validNames;
+                const flat = allImagesByArtist.reduce((a, arr) => a.concat(arr || []), []);
+                state.selectedImageSet = new Set(flat);
                 startAlternatingRotation(allImagesByArtist);
             } else {
                 // 没有歌手写真，使用专辑封面
@@ -767,6 +834,10 @@
             
             const currentSong = getCurrentSong();
             if (result.success && result.data && result.data.length > 0) {
+                state.currentImagesByArtist = [result.data];
+                state.isMultiArtist = false;
+                state.currentArtistNames = [artistName];
+                state.selectedImageSet = new Set(result.data);
                 startRotation(result.data);
             } else {
                 useAlbumCoverAsBackground(currentSong?.img);
@@ -804,6 +875,9 @@
         state.isTransitioning = false;
         state.currentBackgroundIndex = 0;
         state.currentDisplayImage = null;
+        state.currentImagesByArtist = [];
+        state.currentArtistNames = [];
+        state.selectedImageSet = new Set();
         
         // 立即清除 DOM 中的背景图层缓存，确保视觉上立刻清空
         clearBackgroundLayers();
@@ -813,9 +887,9 @@
 
         try {
             if (artistId) {
-                // 检查是否有多个歌手
-                const artistIds = String(artistId).split('、').map(id => id.trim()).filter(id => id);
-                const artistNames = author.split('、').map(name => name.trim()).filter(name => name);
+                // 检查是否有多个歌手：ID 分隔符不统一（中文顿号/英文逗号/中文逗号/分号/空格都可能），统一按多种分隔符切
+                const artistIds = String(artistId).split(/[、,，;；\s|/]+/).map(id => id.trim()).filter(id => id);
+                const artistNames = author.split(/[、,，;；]+/).map(name => name.trim()).filter(name => name);
                 
                 if (artistIds.length > 1) {
                     // 多歌手情况：获取所有歌手的写真
@@ -826,22 +900,35 @@
                 }
             } else if (author) {
                 // 歌曲数据中没有歌手 ID，尝试通过搜索获取
-                const artistNames = author.split('、').map(name => name.trim()).filter(name => name);
+                const artistNames = author.split(/[、,，;；]+/).map(name => name.trim()).filter(name => name);
                 
                 if (artistNames.length > 1) {
                     // 多歌手情况：分别搜索每个歌手
                     const searchPromises = artistNames.map(name => fetchArtistIdByName(name));
-                    
+
                     const results = await Promise.all(searchPromises);
-                    const ids = results.filter(id => id !== null);
+
+                    // 搜索期间切歌，直接放弃这次旧搜索结果
+                    if (state.currentSongHash !== songHash) {
+                        return;
+                    }
+
+                    // 保持 id 与 name 一一对应：过滤掉搜不到 ID 的歌手，避免错位配对
+                    const paired = artistNames
+                        .map((name, i) => ({ name, id: results[i] }))
+                        .filter(p => p.id);
+                    const ids = paired.map(p => p.id);
+                    const names = paired.map(p => p.name);
+
                     if (ids.length > 0) {
-                        await fetchMultipleArtistsBackground(ids, artistNames, songHash);
+                        await fetchMultipleArtistsBackground(ids, names, songHash);
                     } else {
                         useAlbumCoverAsBackground(currentSong.img);
                     }
                 } else {
                     // 单歌手情况
                     const id = await fetchArtistIdByName(artistNames[0] || author);
+                    if (state.currentSongHash !== songHash) return; // 搜索期间切歌
                     if (id) {
                         await fetchArtistBackground(artistNames[0] || author, id, songHash);
                     } else {
@@ -960,10 +1047,404 @@
         state.isInitialized = false;
     }
 
+    // ==================== 右键菜单与写真管理 ====================
+
+    /**
+     * 获取当前所有写真的扁平数组
+     */
+    function getFlatImages() {
+        return state.currentImagesByArtist.reduce((a, arr) => a.concat(arr || []), []);
+    }
+
+    function closeContextMenu() {
+        if (state.contextMenu) {
+            state.contextMenu.remove();
+            state.contextMenu = null;
+        }
+    }
+
+    function closeGalleryModal() {
+        if (state.galleryModal) {
+            state.galleryModal.remove();
+            state.galleryModal = null;
+        }
+    }
+
+    function closeIntervalDialog() {
+        if (state.intervalDialog) {
+            state.intervalDialog.remove();
+            state.intervalDialog = null;
+        }
+    }
+
+    /**
+     * 根据当前选中集过滤写真并重启轮播
+     */
+    function applySelectionRestart() {
+        if (!state.currentImagesByArtist || state.currentImagesByArtist.length === 0) return;
+
+        // 按歌手分组过滤，只保留选中的图片
+        const filtered = state.currentImagesByArtist
+            .map(arr => (arr || []).filter(url => state.selectedImageSet.has(url)))
+            .filter(arr => arr.length > 0);
+
+        if (filtered.length === 0) return;
+
+        if (state.isMultiArtist && filtered.length > 1) {
+            startAlternatingRotation(filtered);
+        } else {
+            const flat = filtered.reduce((a, b) => a.concat(b), []);
+            startRotation(flat);
+        }
+    }
+
+    /**
+     * 显示右键菜单
+     */
+    function showContextMenu(x, y) {
+        closeContextMenu();
+        closeGalleryModal();
+        closeIntervalDialog();
+
+        const hasImages = getFlatImages().length > 0;
+        const hasCurrent = !!state.currentDisplayImage;
+        const sec = (state.rotationInterval / 1000).toFixed(0);
+
+        const menu = document.createElement('div');
+        menu.className = 'artist-context-menu';
+        menu.innerHTML = `
+            <div class="acm-item" data-action="gallery">
+                <span class="acm-icon">🖼</span><span>选择写真参加轮播</span>
+            </div>
+            <div class="acm-item" data-action="save">
+                <span class="acm-icon">💾</span><span>保存当前写真</span>
+            </div>
+            <div class="acm-item" data-action="interval">
+                <span class="acm-icon">⏱</span><span>轮播间隔：${sec} 秒</span>
+            </div>
+        `;
+
+        if (!hasImages) menu.querySelector('[data-action="gallery"]').classList.add('disabled');
+        if (!hasCurrent) menu.querySelector('[data-action="save"]').classList.add('disabled');
+
+        document.body.appendChild(menu);
+        state.contextMenu = menu;
+
+        // 定位并防止超出视口
+        const rect = menu.getBoundingClientRect();
+        let left = x, top = y;
+        if (x + rect.width > window.innerWidth - 10) left = Math.max(10, x - rect.width);
+        if (y + rect.height > window.innerHeight - 10) top = Math.max(10, y - rect.height);
+        menu.style.left = left + 'px';
+        menu.style.top = top + 'px';
+
+        menu.addEventListener('click', (e) => {
+            const item = e.target.closest('.acm-item');
+            if (!item || item.classList.contains('disabled')) return;
+            const action = item.dataset.action;
+            closeContextMenu();
+            if (action === 'gallery') openGalleryModal();
+            else if (action === 'save') saveCurrentWallpaper();
+            else if (action === 'interval') openIntervalDialog();
+        });
+    }
+
+    /**
+     * 打开写真选择弹窗（按歌手分组，类似酷狗：顶部歌手标签切换）
+     */
+    function openGalleryModal() {
+        closeGalleryModal();
+        const groups = state.currentImagesByArtist;
+        const names = state.currentArtistNames;
+        if (!groups || groups.length === 0) return;
+
+        const totalCount = groups.reduce((s, g) => s + (g ? g.length : 0), 0);
+
+        const modal = document.createElement('div');
+        modal.className = 'artist-gallery-modal';
+        modal.innerHTML = `
+            <div class="agm-backdrop"></div>
+            <div class="agm-panel">
+                <div class="agm-header">
+                    <span class="agm-title">选择写真参加轮播（${state.selectedImageSet.size}/${totalCount}）</span>
+                    <span class="agm-close">✕</span>
+                </div>
+                <div class="agm-artist-tabs"></div>
+                <div class="agm-grid"></div>
+                <div class="agm-footer">
+                    <button class="agm-btn agm-select-all">全选本歌手</button>
+                    <button class="agm-btn agm-deselect-all">取消本歌手</button>
+                    <span class="agm-spacer"></span>
+                    <button class="agm-btn agm-cancel">取消</button>
+                    <button class="agm-btn agm-ok">确定</button>
+                </div>
+            </div>
+        `;
+
+        const grid = modal.querySelector('.agm-grid');
+        const titleEl = modal.querySelector('.agm-title');
+        const tabsEl = modal.querySelector('.agm-artist-tabs');
+        let activeGroup = 0;
+
+        // 构建歌手标签
+        groups.forEach((g, i) => {
+            const tab = document.createElement('button');
+            tab.className = 'agm-tab' + (i === activeGroup ? ' active' : '');
+            tab.textContent = names[i] || `歌手${i + 1}`;
+            tab.addEventListener('click', () => {
+                activeGroup = i;
+                tabsEl.querySelectorAll('.agm-tab').forEach((t, j) => {
+                    t.classList.toggle('active', j === activeGroup);
+                });
+                renderGrid();
+            });
+            tabsEl.appendChild(tab);
+        });
+
+        // 单歌手时也显示歌手名标签，保持界面一致
+        const refreshTitle = () => {
+            titleEl.textContent = `选择写真参加轮播（${state.selectedImageSet.size}/${totalCount}）`;
+        };
+
+        // 只渲染当前歌手的写真
+        const renderGrid = () => {
+            grid.innerHTML = '';
+            const images = groups[activeGroup] || [];
+            images.forEach(url => {
+                const cell = document.createElement('div');
+                cell.className = 'agm-cell' + (state.selectedImageSet.has(url) ? ' selected' : '');
+                cell.innerHTML = `<img src="${url}" alt=""><span class="agm-check">✓</span>`;
+                cell.addEventListener('click', () => {
+                    if (state.selectedImageSet.has(url)) {
+                        if (state.selectedImageSet.size <= 1) return; // 至少保留一张
+                        state.selectedImageSet.delete(url);
+                        cell.classList.remove('selected');
+                    } else {
+                        state.selectedImageSet.add(url);
+                        cell.classList.add('selected');
+                    }
+                    refreshTitle();
+                });
+                // 右键缩略图：放大预览该写真
+                cell.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openLightbox(url);
+                });
+                grid.appendChild(cell);
+            });
+        };
+
+        document.body.appendChild(modal);
+        state.galleryModal = modal;
+        renderGrid();
+
+        modal.querySelector('.agm-close').addEventListener('click', closeGalleryModal);
+        modal.querySelector('.agm-backdrop').addEventListener('click', closeGalleryModal);
+        modal.querySelector('.agm-cancel').addEventListener('click', closeGalleryModal);
+
+        // 全选/取消全选作用于当前歌手
+        modal.querySelector('.agm-select-all').addEventListener('click', () => {
+            (groups[activeGroup] || []).forEach(u => state.selectedImageSet.add(u));
+            renderGrid();
+            refreshTitle();
+        });
+
+        modal.querySelector('.agm-deselect-all').addEventListener('click', () => {
+            (groups[activeGroup] || []).forEach(u => state.selectedImageSet.delete(u));
+            // 兜底：全部清空时保留第一张
+            if (state.selectedImageSet.size === 0) {
+                const first = (groups[0] && groups[0][0]) || null;
+                if (first) state.selectedImageSet.add(first);
+            }
+            renderGrid();
+            refreshTitle();
+        });
+
+        modal.querySelector('.agm-ok').addEventListener('click', () => {
+            closeGalleryModal();
+            applySelectionRestart();
+        });
+    }
+
+    /**
+     * 打开轮播间隔设置弹窗
+     */
+    function openIntervalDialog() {
+        closeIntervalDialog();
+        const presets = [5000, 10000, 15000, 30000, 60000];
+        const labels = { 5000: '5 秒', 10000: '10 秒', 15000: '15 秒', 30000: '30 秒', 60000: '60 秒' };
+
+        const dialog = document.createElement('div');
+        dialog.className = 'artist-interval-dialog';
+        const buttonsHtml = presets.map(ms =>
+            `<button class="aid-btn${ms === state.rotationInterval ? ' active' : ''}" data-ms="${ms}">${labels[ms]}</button>`
+        ).join('');
+
+        dialog.innerHTML = `
+            <div class="aid-backdrop"></div>
+            <div class="aid-panel">
+                <div class="aid-header">
+                    <span>写真轮播间隔</span>
+                    <span class="aid-close">✕</span>
+                </div>
+                <div class="aid-presets">${buttonsHtml}</div>
+                <div class="aid-custom">
+                    <input type="number" class="aid-input" min="3" max="600" step="1" value="${state.rotationInterval / 1000}">
+                    <span>秒</span>
+                    <button class="aid-btn aid-apply-custom">应用</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(dialog);
+        state.intervalDialog = dialog;
+
+        const applyInterval = (ms) => {
+            ms = Math.max(3000, Math.min(600000, ms)); // 3秒 ~ 10分钟
+            state.rotationInterval = ms;
+            try { chrome.storage.local.set({ rotationInterval: ms }); } catch (e) {}
+            closeIntervalDialog();
+            applySelectionRestart();
+        };
+
+        dialog.querySelectorAll('.aid-btn[data-ms]').forEach(btn => {
+            btn.addEventListener('click', () => applyInterval(parseInt(btn.dataset.ms, 10)));
+        });
+        dialog.querySelector('.aid-apply-custom').addEventListener('click', () => {
+            const val = parseFloat(dialog.querySelector('.aid-input').value);
+            if (val && val > 0) applyInterval(val * 1000);
+        });
+        dialog.querySelector('.aid-close').addEventListener('click', closeIntervalDialog);
+        dialog.querySelector('.aid-backdrop').addEventListener('click', closeIntervalDialog);
+    }
+
+    /**
+     * 保存指定 URL 的写真
+     */
+    async function saveWallpaper(url) {
+        if (!url) return;
+        try {
+            const resp = await chrome.runtime.sendMessage({ type: 'DOWNLOAD_IMAGE', url: url });
+            if (resp && resp.success && resp.dataUrl) {
+                const a = document.createElement('a');
+                a.href = resp.dataUrl;
+                const ext = (url.match(/\.(jpg|jpeg|png|webp|bmp)/i) || [, 'jpg'])[1];
+                const song = getCurrentSong();
+                const safeName = (song?.author || 'artist').replace(/[\\/:*?"<>|]/g, '_');
+                a.download = `写真_${safeName}_${Date.now()}.${ext}`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } else {
+                console.warn('[ArtistWallpaper] 保存写真失败:', resp && resp.error);
+            }
+        } catch (e) {
+            console.error('[ArtistWallpaper] 保存写真失败:', e);
+        }
+    }
+
+    /**
+     * 保存当前显示的写真
+     */
+    async function saveCurrentWallpaper() {
+        await saveWallpaper(state.currentDisplayImage);
+    }
+
+    // ==================== 写真大图预览 ====================
+    let lightboxEl = null;
+
+    function closeLightbox() {
+        if (lightboxEl) {
+            lightboxEl.remove();
+            lightboxEl = null;
+        }
+    }
+
+    /**
+     * 打开写真大图预览（带保存按钮）
+     */
+    function openLightbox(url) {
+        closeLightbox();
+        if (!url) return;
+
+        const lb = document.createElement('div');
+        lb.className = 'artist-lightbox';
+        lb.innerHTML = `
+            <div class="alb-backdrop"></div>
+            <div class="alb-stage">
+                <div class="alb-topbar">
+                    <span class="alb-hint">右键缩略图可放大预览 · Esc 关闭</span>
+                    <span class="alb-close">✕</span>
+                </div>
+                <div class="alb-image-wrap">
+                    <img src="${url}" alt="写真预览">
+                </div>
+                <div class="alb-bottombar">
+                    <button class="alb-save agm-btn">💾 保存写真</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(lb);
+        lightboxEl = lb;
+
+        lb.querySelector('.alb-close').addEventListener('click', closeLightbox);
+        lb.querySelector('.alb-backdrop').addEventListener('click', closeLightbox);
+        lb.querySelector('.alb-save').addEventListener('click', () => saveWallpaper(url));
+    }
+
+    /**
+     * 安装右键菜单监听
+     */
+    function setupContextMenuListener() {
+        document.addEventListener('contextmenu', (e) => {
+            const lyricsScreen = e.target.closest('.lyrics-screen');
+            if (!lyricsScreen) return;
+
+            // 在交互控件上不拦截（保留默认行为）
+            if (e.target.closest('button, a, input, textarea, select, .close-btn, .lyrics-mode-btn, .progress-bar-container, .player-controls, #lyrics-container')) {
+                return;
+            }
+
+            e.preventDefault();
+            showContextMenu(e.clientX, e.clientY);
+        });
+
+        // 点击其他地方关闭菜单
+        document.addEventListener('click', (e) => {
+            if (state.contextMenu && !e.target.closest('.artist-context-menu')) {
+                closeContextMenu();
+            }
+        });
+
+        // Esc 关闭所有弹窗
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeContextMenu();
+                closeGalleryModal();
+                closeIntervalDialog();
+                closeLightbox();
+            }
+        });
+
+        window.addEventListener('blur', closeContextMenu);
+    }
+
     /**
      * 初始化插件
      */
     function init() {
+        // 从存储中读取上次设置的轮播间隔
+        try {
+            chrome.storage.local.get('rotationInterval').then(data => {
+                if (typeof data.rotationInterval === 'number' && data.rotationInterval > 0) {
+                    state.rotationInterval = data.rotationInterval;
+                }
+            });
+        } catch (e) {}
+
+        setupContextMenuListener();
+
         // 等待 DOM 加载完成
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {

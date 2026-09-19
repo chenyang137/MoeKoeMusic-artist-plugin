@@ -28,7 +28,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
         return true;
     }
+
+    if (message.type === 'DOWNLOAD_IMAGE') {
+        // 抓取远程图片并转 base64，供 content script 触发下载
+        fetchImageAsDataUrl(message.url)
+            .then(dataUrl => {
+                sendResponse({ success: true, dataUrl: dataUrl });
+            })
+            .catch(error => {
+                sendResponse({ success: false, error: error.message });
+            });
+        return true;
+    }
 });
+
+/**
+ * 抓取远程图片并转换为 base64 DataURL（用于跨域下载）
+ * @param {string} url - 图片 URL
+ * @returns {Promise<string>}
+ */
+async function fetchImageAsDataUrl(url) {
+    if (!url) throw new Error('缺少图片 URL');
+
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+
+    const blob = await response.blob();
+    const buffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+
+    // 分块拼接，避免大字符串栈溢出
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+
+    const mime = blob.type || 'image/jpeg';
+    return `data:${mime};base64,${btoa(binary)}`;
+}
 
 /**
  * 获取歌手写真图片
