@@ -6,6 +6,35 @@
 (function() {
     'use strict';
 
+    const apiSearchPending = new Map();
+    const apiSearchResponseEvent = 'artist-wallpaper:api-response';
+    window.addEventListener(apiSearchResponseEvent, (event) => {
+        const pending = apiSearchPending.get(event.detail?.id);
+        if (!pending) return;
+        apiSearchPending.delete(event.detail.id);
+        clearTimeout(pending.timeout);
+        pending.resolve(event.detail.authorId || null);
+    });
+
+    function searchArtistInMainWorld(artistName) {
+        return new Promise((resolve) => {
+            const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            const timeout = setTimeout(() => {
+                apiSearchPending.delete(id);
+                resolve(null);
+            }, 15000);
+            apiSearchPending.set(id, { resolve, timeout });
+            window.dispatchEvent(new CustomEvent('artist-wallpaper:api-request', {
+                detail: { id, artistName }
+            }));
+        });
+    }
+
+    const bridgeScript = document.createElement('script');
+    bridgeScript.src = chrome.runtime.getURL('main-world-bridge.js');
+    bridgeScript.onload = () => bridgeScript.remove();
+    (document.head || document.documentElement).appendChild(bridgeScript);
+
     // 写真轮播状态
     const state = {
         artistBackgroundImages: [],
@@ -787,14 +816,7 @@
         if (!artistName) return null;
         
         try {
-            const result = await chrome.runtime.sendMessage({
-                type: 'SEARCH_ARTIST_ID',
-                artistName: artistName
-            });
-            
-            if (result.success && result.data) {
-                return result.data;
-            }
+            return await searchArtistInMainWorld(artistName);
         } catch (error) {
             console.warn('[ArtistWallpaper] 搜索歌手 ID 失败:', artistName, error);
         }

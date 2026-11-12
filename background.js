@@ -17,18 +17,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true; // 保持消息通道开放用于异步响应
     }
     
-    if (message.type === 'SEARCH_ARTIST_ID') {
-        // 搜索歌手 ID
-        searchArtistId(message.artistName)
-            .then(result => {
-                sendResponse({ success: true, data: result });
-            })
-            .catch(error => {
-                sendResponse({ success: false, error: error.message });
-            });
-        return true;
-    }
-
     if (message.type === 'DOWNLOAD_IMAGE') {
         // 抓取远程图片并转 base64，供 content script 触发下载
         fetchImageAsDataUrl(message.url)
@@ -96,40 +84,6 @@ async function fetchArtistWallpaper(artistId, artistName) {
         console.error('[ArtistWallpaper] 获取歌手写真失败:', error);
         return [];
     }
-}
-
-/**
- * 通过搜索 API 获取歌手 ID
- * @param {string} artistName - 歌手名称
- * @returns {Promise<string|null>} - 歌手 ID
- */
-async function searchArtistId(artistName) {
-    if (!artistName) {
-        return null;
-    }
-    
-    const searchUrl = `http://127.0.0.1:6521/search?keywords=${encodeURIComponent(artistName)}&type=author`;
-    
-    try {
-        const response = await fetch(searchUrl);
-        
-        if (!response.ok) {
-            return null;
-        }
-        
-        const text = await response.text();
-        const data = JSON.parse(text);
-        
-        // 检查数据结构：API 返回 data.lists 数组
-        if (data.status === 1 && data.data && data.data.lists && data.data.lists.length > 0) {
-            const authorId = data.data.lists[0].AuthorId;
-            return authorId;
-        }
-    } catch (error) {
-        console.error('[ArtistWallpaper] 搜索歌手 ID 失败:', error);
-    }
-    
-    return null;
 }
 
 console.log('[ArtistWallpaper] Background service worker initialized');

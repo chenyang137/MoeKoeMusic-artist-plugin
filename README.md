@@ -132,7 +132,7 @@ Query Parameters:
 ### 搜索歌手 ID
 
 ```
-GET http://127.0.0.1:6521/search
+通过页面主世界的 kugouapi.request(`/search?keywords={歌手名称}&type=author`) 搜索歌手 ID
 Query Parameters:
   - keywords: {歌手名称}
   - type: author
